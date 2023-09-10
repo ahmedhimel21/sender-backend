@@ -13,8 +13,8 @@ app.use(express.json());
 app.use(bodyParser.json());
 
 // twilio setup
-const twilioAccountSid = 'AC759b6fedb9a007fc3697d97fcf320649';
-const twilioAuthToken = 'df3ec440f32af1f11274835836ca4f83';
+const twilioAccountSid = process.env.TWILIO_SID;
+const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhoneNumber = '+16066570812';
 const twilioClient = twilio(twilioAccountSid, twilioAuthToken);
 
@@ -59,7 +59,6 @@ async function run() {
 
     const usersCollection = client.db('sender').collection('users');
     const consumerCollection = client.db('sender').collection('consumerCollection');
-    const messageHistory = client.db('sender').collection('messageHistory');
 
     // jwt related api
     app.post('/jwt', (req, res) => {
@@ -175,16 +174,6 @@ async function run() {
           to: recipient,
         });
 
-        // Insert the sent SMS record into the collection
-        const result = await messageHistory.insertOne({
-          recipient,
-          message,
-          timestamp: new Date(),
-          twilioMessageSid: sentMessage.sid,
-        });
-
-        console.log('SMS record inserted:', result);
-
         res.json({ message: 'SMS sent successfully', messageId: sentMessage.sid });
       } catch (error) {
         console.error('Twilio Error:', error);
@@ -192,38 +181,10 @@ async function run() {
       }
     });
 
-    // API endpoint to retrieve message history
-    app.get('/api/message-history', async (req, res) => {
-      const cursor = messageHistory.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-
     // api for sending consumer sms
     app.post('/api/consumer/send-sms', async (req, res) => {
       const { userId, message, recipient } = req.body;
       console.log(userId, message, recipient)
-      // Check if the consumer has enough credits
-      // const consumer = await consumerCollection.findOne({ _id: userId });
-
-      // if (!consumer || consumer.smsCredits <= 0) {
-      //   return res.status(400).json({ message: 'Insufficient SMS credits' });
-      // }
-
-      // // Send SMS
-      // await twilioClient.messages.create({
-      //   body: message,
-      //   from: twilioPhoneNumber,
-      //   to: recipient,
-      // });
-
-      // Deduct one SMS credit
-      // await consumerCollection.updateOne(
-      //   { _id: userId },
-      //   { $inc: { smsCredits: -1 } }
-      // );
-
-      // res.json({ message: 'SMS sent successfully' });
 
       try {
         const sentMessage = await twilioClient.messages.create({
@@ -232,13 +193,16 @@ async function run() {
           to: recipient,
         });
 
-        // Insert the sent SMS record into the collection
-        const result = await consumerCollection.updateOne(
-          {_id: userId},
-          {$inc: {smsCredits: +1}}
-        )
+        const creditsUpdate = await consumerCollection.updateOne(
+          { _id: new ObjectId(userId) },
+          {
+            $inc: {
+              smsCredits: +1
+            }
+          }
+        );
 
-        console.log('SMS record inserted:', result);
+        console.log('SMS record inserted:');
 
         res.json({ message: 'SMS sent successfully', messageId: sentMessage.sid });
       } catch (error) {
@@ -247,18 +211,20 @@ async function run() {
       }
     });
 
-    // API endpoint to get remaining SMS credits for a consumer
-    app.get('/api/consumer/:id/remaining-sms-credits', async (req, res) => {
-      const { id } = req.params;
+    // remaining sms credits
+    app.get('/smsCredits/:id', async (req,res) =>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await consumerCollection.findOne(query);
+      res.send(result);
+    })
 
-      const consumer = await consumerCollection.findOne({ _id: id });
-
-      if (!consumer) {
-        return res.status(404).json({ message: 'Consumer not found' });
-      }
-
-      res.json({ remainingSmsCredits: consumer.smsCredits });
-    });
+    // get all consumer sms credits
+    app.get('/consumerCredits', async (req,res) =>{
+      const cursor = consumerCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
 
     // API endpoint to grant additional SMS credits (for admin use)
     app.post('/api/admin/grant-sms-credits', async (req, res) => {
