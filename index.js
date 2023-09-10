@@ -212,34 +212,34 @@ async function run() {
     });
 
     // remaining sms credits
-    app.get('/smsCredits/:id', async (req,res) =>{
+    app.get('/smsCredits/:id', async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const result = await consumerCollection.findOne(query);
       res.send(result);
     })
 
     // get all consumer sms credits
-    app.get('/consumerCredits', async (req,res) =>{
+    app.get('/consumerCredits', async (req, res) => {
       const cursor = consumerCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     })
 
-    // API endpoint to grant additional SMS credits (for admin use)
-    app.post('/api/admin/grant-sms-credits', async (req, res) => {
-      const { consumerId, credits } = req.body;
+    app.patch('/smsCreditGrant/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
+      const options = {upsert:true};
+      const updateDoc = {
+        $set: {
 
-      // Implement admin authentication here
-
-      // Grant additional SMS credits
-      await consumerCollection.updateOne(
-        { _id: consumerId },
-        { $inc: { smsCredits: credits } }
-      );
-
-      res.json({ message: 'SMS credits granted successfully' });
-    });
+          smsCredits: 0
+        }
+      }
+      const result = await consumerCollection.updateOne(filter, updateDoc,options);
+      res.send(result)
+      console.log(id);
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
